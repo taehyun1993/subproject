@@ -1,0 +1,8 @@
+{
+  "name": "personal-ai-dev-team",
+  "version": "0.1.0",
+  "description": "개인용 AI 개발팀: 워크플로 라우팅, 역할 스킬(기획/백엔드/프론트/UIUX), 피드백 누적·반영 파이프라인, PII·시크릿 차단 hook을 묶은 플러그인",
+  "author": {
+    "name": "taehyun"
+  }
+}

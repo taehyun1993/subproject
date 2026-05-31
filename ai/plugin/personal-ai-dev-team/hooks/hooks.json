@@ -1,0 +1,35 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell|Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pii-guard.ps1"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/completion-check.ps1"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/feedback-reminder.ps1"
+          }
+        ]
+      }
+    ]
+  }
+}

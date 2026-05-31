@@ -1,0 +1,14 @@
+{
+  "name": "personal-dev",
+  "owner": {
+    "name": "taehyun"
+  },
+  "plugins": [
+    {
+      "name": "personal-ai-dev-team",
+      "source": "./personal-ai-dev-team",
+      "description": "개인용 AI 개발팀: 워크플로 라우팅, 역할 스킬, 피드백 파이프라인, PII·시크릿 차단 hook",
+      "version": "0.1.0"
+    }
+  ]
+}
