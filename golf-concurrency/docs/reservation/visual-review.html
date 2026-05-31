@@ -1,0 +1,813 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Golf Reservation Concurrency Review</title>
+  <style>
+    :root {
+      --ink: #1c2430;
+      --muted: #5d6675;
+      --line: #d7dce4;
+      --paper: #f7f8fa;
+      --white: #ffffff;
+      --red: #c83f49;
+      --green: #24785c;
+      --blue: #2c64a7;
+      --amber: #ad6d16;
+      --cyan: #217b86;
+      --violet: #6852a3;
+      --shadow: 0 14px 30px rgba(28, 36, 48, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+      line-height: 1.55;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    .page {
+      min-height: 100vh;
+    }
+
+    .hero {
+      min-height: 86vh;
+      display: grid;
+      grid-template-columns: minmax(320px, 0.86fr) minmax(420px, 1.14fr);
+      align-items: center;
+      gap: 56px;
+      padding: 56px clamp(28px, 6vw, 96px) 42px;
+      color: #fff;
+      background:
+        linear-gradient(105deg, rgba(10, 22, 34, 0.94) 0%, rgba(17, 34, 47, 0.86) 48%, rgba(17, 34, 47, 0.2) 100%),
+        url("https://images.unsplash.com/photo-1535131749006-b7f58c99034b?auto=format&fit=crop&w=2200&q=80") center / cover;
+    }
+
+    .hero h1 {
+      margin: 0 0 18px;
+      max-width: 760px;
+      font-size: clamp(42px, 5vw, 76px);
+      line-height: 1.02;
+      letter-spacing: 0;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 700px;
+      color: rgba(255, 255, 255, 0.82);
+      font-size: 19px;
+    }
+
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 28px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 34px;
+      padding: 6px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.12);
+      color: rgba(255, 255, 255, 0.92);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .decision-panel {
+      background: rgba(255, 255, 255, 0.96);
+      color: var(--ink);
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+    }
+
+    .decision-panel h2 {
+      margin: 0 0 16px;
+      font-size: 23px;
+      letter-spacing: 0;
+    }
+
+    .decision-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .decision-row {
+      display: grid;
+      grid-template-columns: 130px 1fr;
+      gap: 14px;
+      align-items: start;
+      padding: 14px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .decision-row:first-of-type {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .label {
+      color: var(--muted);
+      font-weight: 700;
+      font-size: 13px;
+      text-transform: uppercase;
+    }
+
+    .value {
+      font-size: 15px;
+    }
+
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      padding: 10px 16px;
+      background: rgba(247, 248, 250, 0.92);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(12px);
+    }
+
+    .nav a {
+      min-height: 36px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      text-decoration: none;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .nav a:hover {
+      background: #e9edf3;
+      color: var(--ink);
+    }
+
+    section {
+      padding: 72px clamp(22px, 5vw, 82px);
+    }
+
+    .section-inner {
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+
+    .section-title {
+      display: grid;
+      grid-template-columns: minmax(220px, 0.42fr) minmax(300px, 0.58fr);
+      gap: 34px;
+      align-items: end;
+      margin-bottom: 32px;
+    }
+
+    .section-title h2 {
+      margin: 0;
+      font-size: clamp(30px, 3vw, 46px);
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    .section-title p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .problem-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+
+    .metric {
+      min-height: 146px;
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--white);
+      box-shadow: var(--shadow);
+    }
+
+    .metric strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 31px;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .metric.red {
+      border-top: 4px solid var(--red);
+    }
+
+    .metric.green {
+      border-top: 4px solid var(--green);
+    }
+
+    .metric.blue {
+      border-top: 4px solid var(--blue);
+    }
+
+    .metric.amber {
+      border-top: 4px solid var(--amber);
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .flow-step {
+      position: relative;
+      min-height: 156px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--white);
+      box-shadow: var(--shadow);
+    }
+
+    .flow-step::after {
+      content: ">";
+      position: absolute;
+      right: -12px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--ink);
+      color: #fff;
+      font-size: 15px;
+      z-index: 1;
+    }
+
+    .flow-step:last-child::after {
+      display: none;
+    }
+
+    .flow-step b {
+      display: block;
+      margin-bottom: 10px;
+      font-size: 16px;
+    }
+
+    .flow-step p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .accent-blue {
+      border-top: 4px solid var(--blue);
+    }
+
+    .accent-green {
+      border-top: 4px solid var(--green);
+    }
+
+    .accent-red {
+      border-top: 4px solid var(--red);
+    }
+
+    .accent-amber {
+      border-top: 4px solid var(--amber);
+    }
+
+    .accent-cyan {
+      border-top: 4px solid var(--cyan);
+    }
+
+    .accent-violet {
+      border-top: 4px solid var(--violet);
+    }
+
+    .swimlane {
+      display: grid;
+      grid-template-columns: 210px 1fr;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--white);
+      box-shadow: var(--shadow);
+    }
+
+    .lane-label {
+      display: grid;
+      place-items: center;
+      padding: 22px;
+      background: #202b38;
+      color: #fff;
+      font-weight: 800;
+      text-align: center;
+    }
+
+    .lane-body {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+    }
+
+    .lane-item {
+      min-height: 128px;
+      padding: 18px;
+      border-left: 1px solid var(--line);
+    }
+
+    .lane-item:first-child {
+      border-left: 0;
+    }
+
+    .lane-item b {
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .lane-item span {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .state-map {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .state {
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--white);
+      box-shadow: var(--shadow);
+    }
+
+    .state h3 {
+      margin: 0 0 10px;
+      font-size: 21px;
+    }
+
+    .state p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+
+    .option {
+      min-height: 280px;
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--white);
+      box-shadow: var(--shadow);
+    }
+
+    .option h3 {
+      margin: 0 0 12px;
+      font-size: 22px;
+    }
+
+    .option ul {
+      margin: 0;
+      padding-left: 20px;
+      color: var(--muted);
+    }
+
+    .option li {
+      margin: 8px 0;
+    }
+
+    .verdict {
+      margin-top: 18px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      background: #eff5f2;
+      color: var(--green);
+      font-weight: 800;
+    }
+
+    .verdict.no {
+      background: #f8eeee;
+      color: var(--red);
+    }
+
+    .checklist {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .check {
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 12px;
+      min-height: 110px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--white);
+      box-shadow: var(--shadow);
+    }
+
+    .checkmark {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: #eaf4ef;
+      color: var(--green);
+      font-weight: 900;
+    }
+
+    .check b {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .check span {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .footer {
+      padding: 34px clamp(22px, 5vw, 82px) 56px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      text-align: center;
+    }
+
+    @media (max-width: 980px) {
+      .hero,
+      .section-title,
+      .comparison {
+        grid-template-columns: 1fr;
+      }
+
+      .hero {
+        min-height: auto;
+      }
+
+      .problem-strip,
+      .flow,
+      .state-map,
+      .checklist {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .flow-step::after {
+        display: none;
+      }
+
+      .swimlane {
+        grid-template-columns: 1fr;
+      }
+
+      .lane-body {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .hero {
+        padding: 38px 20px;
+      }
+
+      .decision-row,
+      .problem-strip,
+      .flow,
+      .state-map,
+      .checklist,
+      .lane-body {
+        grid-template-columns: 1fr;
+      }
+
+      .lane-item {
+        border-left: 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .nav {
+        justify-content: flex-start;
+        overflow-x: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <div>
+        <h1>Golf Reservation Concurrency Review</h1>
+        <p>
+          같은 타석의 겹치는 예약을 막기 위한 Redis 락, MariaDB fallback,
+          circuit breaker 설계를 리뷰용으로 압축한 시각 자료.
+        </p>
+        <div class="hero-meta" aria-label="핵심 조건">
+          <span class="pill">1분 단위 예약</span>
+          <span class="pill">타석 단위 직렬화</span>
+          <span class="pill">Redis 정상 경로</span>
+          <span class="pill">DB fallback</span>
+        </div>
+      </div>
+
+      <aside class="decision-panel" aria-label="최종 결정 요약">
+        <h2>Decision Snapshot</h2>
+        <div class="decision-grid">
+          <div class="decision-row">
+            <div class="label">Normal</div>
+            <div class="value">Redis `SET NX PX`로 `bay_id` 단위 락을 획득한다.</div>
+          </div>
+          <div class="decision-row">
+            <div class="label">Unlock</div>
+            <div class="value">랜덤 token을 저장하고 Lua script로 token 일치 시에만 삭제한다.</div>
+          </div>
+          <div class="decision-row">
+            <div class="label">Failure</div>
+            <div class="value">Redis 장애 시 circuit breaker를 OPEN하고 MariaDB fallback으로 전환한다.</div>
+          </div>
+          <div class="decision-row">
+            <div class="label">Fallback</div>
+            <div class="value">`bay_lock` row를 `SELECT FOR UPDATE`로 잡고 overlap check 후 insert한다.</div>
+          </div>
+        </div>
+      </aside>
+    </header>
+
+    <nav class="nav" aria-label="페이지 섹션">
+      <a href="#problem">문제</a>
+      <a href="#normal">정상 흐름</a>
+      <a href="#failure">장애 흐름</a>
+      <a href="#timeouts">타임아웃</a>
+      <a href="#alternatives">대안</a>
+      <a href="#review">체크리스트</a>
+    </nav>
+
+    <section id="problem">
+      <div class="section-inner">
+        <div class="section-title">
+          <h2>Problem Frame</h2>
+          <p>
+            문제는 예약 row 조회가 아니라 같은 타석의 예약 생성 흐름을 직렬화하는 것이다.
+            다른 타석은 병렬 처리되어야 한다.
+          </p>
+        </div>
+
+        <div class="problem-strip">
+          <div class="metric red">
+            <strong>0</strong>
+            <span>허용 가능한 동일 타석 중복 예약 수</span>
+          </div>
+          <div class="metric blue">
+            <strong>1 min</strong>
+            <span>예약 가능한 최소 시간 단위</span>
+          </div>
+          <div class="metric green">
+            <strong>bay_id</strong>
+            <span>락과 직렬화의 기준 식별자</span>
+          </div>
+          <div class="metric amber">
+            <strong>~90 TPS</strong>
+            <span>67ms, 서버 6대 기준 단순 추정</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="normal">
+      <div class="section-inner">
+        <div class="section-title">
+          <h2>Normal Path</h2>
+          <p>
+            Redis가 정상일 때는 DB row lock을 항상 잡지 않는다. Redis 락으로 같은 타석의 요청만
+            애플리케이션 앞단에서 직렬화한다.
+          </p>
+        </div>
+
+        <div class="flow" aria-label="정상 예약 흐름">
+          <div class="flow-step accent-blue">
+            <b>1. Request</b>
+            <p>사용자가 특정 타석과 시간 구간으로 예약을 요청한다.</p>
+          </div>
+          <div class="flow-step accent-cyan">
+            <b>2. Redis Lock</b>
+            <p>`reservation:lock:bay:{bayId}`를 `SET NX PX`로 획득한다.</p>
+          </div>
+          <div class="flow-step accent-green">
+            <b>3. Overlap Check</b>
+            <p>같은 타석의 기존 예약과 시간 구간 충돌을 조회한다.</p>
+          </div>
+          <div class="flow-step accent-violet">
+            <b>4. Insert</b>
+            <p>충돌이 없으면 예약 row를 생성한다.</p>
+          </div>
+          <div class="flow-step accent-red">
+            <b>5. Unlock</b>
+            <p>Lua script로 token이 일치할 때만 Redis key를 삭제한다.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="failure">
+      <div class="section-inner">
+        <div class="section-title">
+          <h2>Failure Path</h2>
+          <p>
+            Redis command timeout과 장애가 반복되면 circuit breaker가 Redis 접근을 차단한다.
+            이때 MariaDB의 `bay_lock` row가 직렬화 지점이 된다.
+          </p>
+        </div>
+
+        <div class="swimlane" aria-label="Redis 장애 fallback 흐름">
+          <div class="lane-label">Circuit OPEN</div>
+          <div class="lane-body">
+            <div class="lane-item">
+              <b>Skip Redis</b>
+              <span>OPEN 상태에서는 Redis lock 시도를 생략한다.</span>
+            </div>
+            <div class="lane-item">
+              <b>Start Transaction</b>
+              <span>예약 생성에 필요한 DB 작업만 짧게 묶는다.</span>
+            </div>
+            <div class="lane-item">
+              <b>SELECT FOR UPDATE</b>
+              <span>`bay_lock` row를 잡아 같은 타석 요청을 대기시킨다.</span>
+            </div>
+            <div class="lane-item">
+              <b>Commit or Rollback</b>
+              <span>트랜잭션 종료 시 DB row lock은 자동 해제된다.</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="height: 22px"></div>
+
+        <div class="state-map" aria-label="Circuit breaker 상태">
+          <div class="state accent-green">
+            <h3>CLOSED</h3>
+            <p>Redis 정상으로 보고 Redis lock을 사용한다.</p>
+          </div>
+          <div class="state accent-red">
+            <h3>OPEN</h3>
+            <p>Redis 장애로 보고 일정 시간 Redis 접근을 생략한다.</p>
+          </div>
+          <div class="state accent-amber">
+            <h3>HALF_OPEN</h3>
+            <p>제한된 요청만 Redis를 시험하고 성공 시 CLOSED로 복귀한다.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="timeouts">
+      <div class="section-inner">
+        <div class="section-title">
+          <h2>Timeout Map</h2>
+          <p>
+            가장 중요한 운영 포인트는 timeout을 섞지 않는 것이다. Redis 장애 감지, 락 대기,
+            락 자동 해제, DB row lock 대기는 서로 다른 값이다.
+          </p>
+        </div>
+
+        <div class="flow" aria-label="타임아웃 구분">
+          <div class="flow-step accent-red">
+            <b>Redis Command</b>
+            <p>Redis 명령 1회의 응답 대기. 예: 50~200ms.</p>
+          </div>
+          <div class="flow-step accent-blue">
+            <b>Lock Wait</b>
+            <p>Redis는 정상이나 다른 요청이 lock 보유. 예: 10s.</p>
+          </div>
+          <div class="flow-step accent-green">
+            <b>Lock TTL</b>
+            <p>소유 서버 장애 시 자동 해제. P99 처리 시간 + 여유.</p>
+          </div>
+          <div class="flow-step accent-violet">
+            <b>DB Lock Wait</b>
+            <p>`SELECT FOR UPDATE` 대기. 예: 3s.</p>
+          </div>
+          <div class="flow-step accent-cyan">
+            <b>Transaction</b>
+            <p>예약 DB 트랜잭션 전체 시간. 외부 API는 제외.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="alternatives">
+      <div class="section-inner">
+        <div class="section-title">
+          <h2>ADR Summary</h2>
+          <p>
+            리뷰에서 가장 자주 나올 질문은 "왜 이 방식인가"다. 아래는 채택/비채택 이유를 압축한 것이다.
+          </p>
+        </div>
+
+        <div class="comparison">
+          <div class="option">
+            <h3>Selected</h3>
+            <ul>
+              <li>정상 경로: Redis lock only</li>
+              <li>장애 경로: MariaDB `SELECT FOR UPDATE` fallback</li>
+              <li>Redis 장애 전파 방지: circuit breaker</li>
+              <li>락 단위: `bay_id`</li>
+            </ul>
+            <div class="verdict">정상 성능과 장애 대응의 균형이 좋음</div>
+          </div>
+
+          <div class="option">
+            <h3>Rejected For Now</h3>
+            <ul>
+              <li>1분 slot row 테이블: write amplification이 큼</li>
+              <li>Redis + DB lock 항상 사용: 중복 락 비용</li>
+              <li>DB lock only: 모든 경합이 DB로 집중</li>
+              <li>Redisson RLock: 추상화가 두꺼워 초기 설계 통제력이 낮음</li>
+            </ul>
+            <div class="verdict no">트래픽과 경쟁 수준 대비 과한 선택은 보류</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="review">
+      <div class="section-inner">
+        <div class="section-title">
+          <h2>Review Checklist</h2>
+          <p>
+            구현 리뷰에서는 아래 항목이 지켜졌는지만 봐도 대부분의 위험을 걸러낼 수 있다.
+          </p>
+        </div>
+
+        <div class="checklist">
+          <div class="check">
+            <div class="checkmark">✓</div>
+            <div><b>Lock key</b><span>`bay_id` 단위로 일관되게 생성되는가?</span></div>
+          </div>
+          <div class="check">
+            <div class="checkmark">✓</div>
+            <div><b>Token unlock</b><span>Lua script로 내 token일 때만 삭제하는가?</span></div>
+          </div>
+          <div class="check">
+            <div class="checkmark">✓</div>
+            <div><b>Timeout split</b><span>command timeout과 wait timeout이 분리됐는가?</span></div>
+          </div>
+          <div class="check">
+            <div class="checkmark">✓</div>
+            <div><b>Circuit open</b><span>OPEN 상태에서 Redis 접근을 생략하는가?</span></div>
+          </div>
+          <div class="check">
+            <div class="checkmark">✓</div>
+            <div><b>DB fallback</b><span>transaction 안에서 `SELECT FOR UPDATE`를 수행하는가?</span></div>
+          </div>
+          <div class="check">
+            <div class="checkmark">✓</div>
+            <div><b>Test evidence</b><span>동일 타석 동시 요청에서 중복 예약 0건을 검증했는가?</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      Source documents: docs/reservation/*.md and docs/adr/0001-golf-reservation-concurrency-control.md
+    </footer>
+  </main>
+</body>
+</html>
