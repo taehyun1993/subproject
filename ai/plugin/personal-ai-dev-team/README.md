@@ -17,7 +17,7 @@
 3. `personal-ai-dev-team` 을 설치(활성화)한다.
 4. 활성화되면 `/help` 또는 `/` 입력 시 `/workflow`, `/docs`, `/squash` 등이 보인다.
 
-> hook은 `pwsh`(PowerShell 7)로 실행된다. `pwsh`가 PATH에 있어야 한다(아래 8. 트러블슈팅 참고).
+> hook은 **Node.js(`node`)로 실행**된다(크로스플랫폼 — Windows/macOS/Linux 동일). Claude Code 자체가 Node 기반이라 `node`는 사실상 항상 PATH에 있다. 별도 런타임 설치가 필요 없다.
 
 ---
 
@@ -130,14 +130,14 @@
 이 플러그인의 `references/`는 그 **복사본(생성물)**이다 — **손으로 편집하지 말 것.**
 
 - 기준을 고칠 때는 **원본만** 편집한다.
-- 그 뒤 동기화: `pwsh -NoProfile -File ../sync-references.ps1` 실행 → `references/`가 최신으로 덮어써진다.
+- 그 뒤 동기화: `node ../sync-references.mjs` 실행 → `references/`가 최신으로 덮어써진다.
 - 이 규칙을 지키면 "두 벌 갈라짐"이 생기지 않는다. (문서가 안정되면 추후 references를 정본으로 합치는 선택지도 있음.)
 
 ---
 
 ## 9. 조직 정책 주의
 
-- 운영 DB의 DML/DDL·마이그레이션·인프라 변경은 **작성·리뷰까지만**, 실행은 담당자(코드·plan·검증쿼리 형태로 산출). pii-guard가 `terraform apply/destroy`·`mysqldump`·DDL을 차단한다.
+- 운영 DB의 DML/DDL·마이그레이션·인프라 변경은 **작성·리뷰까지만**, 실행은 담당자(코드·plan·검증쿼리 형태로 산출). pii-guard는 이런 위험 명령(인프라 적용·파기, DB 덤프, DDL)을 **셸 실행(Bash/PowerShell)에서만** 차단하고, 문서·코드에서 단어를 언급하는 것은 막지 않는다. 시크릿(키·자격증명)은 모든 도구에서 차단한다.
 - PII/시크릿은 출력 금지 — 예시는 더미(`홍길동`, `010-0000-0000`, `test@example.com`)·마스킹.
 - `/peer-review`(Codex)는 외부 서비스라 sanitize 후에만, 민감 작업은 내부 검토로.
 
@@ -160,7 +160,7 @@
 
 ## 11. 트러블슈팅
 
-- **hook이 안 뜬다** → `pwsh`가 PATH에 있는지 확인(`pwsh -v`). 없으면 PowerShell 7 설치. hook 명령은 `pwsh -NoProfile -File ...` 형식.
+- **hook이 안 뜬다** → `node`가 PATH에 있는지 확인(`node -v`). Claude Code가 Node 기반이라 보통 항상 있다. hook 명령은 `node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/*.mjs` 형식.
 - **스킬이 자동으로 안 뜬다** → 스킬은 description 기반이라 항상 뜨지 않는다. 의도적으로 쓰려면 명시 호출하거나 `/workflow`로 시작.
-- **pii-guard가 정상 작업을 막는다** → 더미 화이트리스트(`0000`·`example.com`·`홍길동`)를 쓰거나, 차단 패턴 조정은 `hooks/scripts/pii-guard.ps1`에서. (보안 기준은 신중히)
-- **references가 원본과 다르다** → 손으로 references를 고친 경우다. 원본을 정본으로 두고 `sync-references.ps1`을 다시 실행.
+- **pii-guard가 정상 작업을 막는다** → 더미 화이트리스트(`0000`·`example.com`·`홍길동`)를 쓰거나, 차단 패턴 조정은 `hooks/scripts/pii-guard.mjs`에서. (보안 기준은 신중히)
+- **references가 원본과 다르다** → 손으로 references를 고친 경우다. 원본을 정본으로 두고 `node ../sync-references.mjs`를 다시 실행.

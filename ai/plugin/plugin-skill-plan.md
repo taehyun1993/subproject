@@ -122,9 +122,9 @@ personal-ai-dev-team/
 ├── hooks/
 │   ├── hooks.json
 │   └── scripts/
-│       ├── pii-guard.ps1
-│       ├── completion-check.ps1
-│       └── feedback-reminder.ps1
+│       ├── pii-guard.mjs
+│       ├── completion-check.mjs
+│       └── feedback-reminder.mjs
 ├── references/
 │   ├── workflow.md
 │   ├── planner.md
@@ -177,20 +177,21 @@ AI + hook 알림 → feedback-log.md  →  /feedback-review     →  승인 후
 
 ## 10. Hooks 설계
 
-`hooks/hooks.json`을 플러그인 루트에 두고 스크립트는 `hooks/scripts/`에 두며 `${CLAUDE_PLUGIN_ROOT}`로 참조한다(Windows → PowerShell). **보안 hook은 fail-closed**: pwsh 부재 등으로 스크립트가 못 돌면 침묵 통과시키지 말고 차단/경고로 처리한다.
+`hooks/hooks.json`을 플러그인 루트에 두고 스크립트는 `hooks/scripts/`에 `.mjs`로 두며 `${CLAUDE_PLUGIN_ROOT}`로 참조한다. **실행은 Node(`node`)** — Claude Code가 Node 기반이라 어느 OS(Windows/macOS/Linux)든 동작하고, UTF-8을 기본 처리해 한글 출력이 깨지지 않는다. (이전 PowerShell 판은 OS 종속·인코딩 문제로 폐기.)
 
-### PII·시크릿 차단 hook (PreToolUse) — 과차단 분리
+### PII·시크릿 차단 hook (PreToolUse) — 검사 범위 분리
 
-대상 도구: `Bash`/`PowerShell`, `Write`, `Edit`. **차단 강도를 둘로 나눈다.**
+대상 도구: `Bash`/`PowerShell`, `Write`, `Edit`. **패턴을 둘로 나눠 검사 범위를 다르게 둔다.**
 
-- **하드 차단(exit 2)** — 실제 시크릿·금지 명령에 한정: AWS 키(`AKIA…`), 실제 DB 접속정보(호스트/계정/비밀번호), JWT/암호화 시크릿, 운영 DB DML/DDL, `mysqldump`/`mariadb-dump`, `terraform apply`/`destroy`.
-- **경고만(진행 허용 + 마스킹 안내)** — 전화·카드·실명 "패턴". 단 더미 화이트리스트(`010-0000-0000` 류 0000 단위, `example.com`, `홍길동`)는 통과시킨다. 더미 픽스처·정규식 작성까지 막아 1인 개발 흐름을 끊지 않기 위함.
+- **시크릿 패턴 → 모든 도구의 새 내용에서 하드 차단(exit 2)**: 키(`AKIA…`), 개인키 헤더, DB 접속 URL(자격증명 포함), 시크릿/비밀번호 하드코딩. (`old_string`은 검사하지 않음.)
+- **명령 실행 패턴 → Bash/PowerShell의 `command`에만 하드 차단**: 인프라 적용·파기, DB 덤프, DDL 류. 문서·코드에서 단어를 "언급"만 한 경우(Write/Edit)는 막지 않는다 → 문서·plan 편집 자기차단 방지.
+- **경고만(진행 허용 + 마스킹 안내)** — 전화·카드·주민번호 "패턴". 더미 화이트리스트(`010-0000-0000` 류, `example.com`, `홍길동`)는 통과.
 
 이 hook은 조직 정책의 **강제 계층**이고, §12의 문서 지침은 **권고 계층**이다.
 
 ### 완료 점검 hook (Stop, 위험·큰 작업 한정)
 
-작업 종료 시 transcript에 위험 신호(commit/배포, DB DML·DDL, 파일 삭제, 결제·정산·권한·개인정보 키워드)가 있으면 1회 block 하고 `workflow.md` §9 완료 보고 형식 + `feedback.md` §6 점검 6질문을 주입한다. 위험 신호가 없으면 통과. `stop_hook_active` 가드로 무한 루프 차단.
+작업 종료 시 transcript에 **행위 형태** 위험 신호(`git commit/push`, `git reset --hard`, DDL, `DELETE FROM`, `Remove-Item`, `rm -rf`)가 있으면 1회 block 하고 `workflow.md` §9 완료 보고 형식 + `feedback.md` §6 점검 6질문을 주입한다. 느슨한 명사(배포·결제·권한 등) 단순 언급으로는 발동하지 않는다(과발동 방지). 위험 신호가 없으면 통과. `stop_hook_active` 가드로 무한 루프 차단.
 
 **책임 경계**: 정상 경로에서는 `/workflow`가 완료 보고를 생성한다. 이 hook은 그게 누락됐을 때를 위한 **강제 fallback**이다(중복 점검이 아니라 안전망).
 
@@ -204,11 +205,11 @@ AI + hook 알림 → feedback-log.md  →  /feedback-review     →  승인 후
 {
   "hooks": {
     "PreToolUse": [
-      { "matcher": "Bash|Write|Edit",
-        "hooks": [ { "type": "command", "command": "pwsh -File ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pii-guard.ps1" } ] }
+      { "matcher": "Bash|PowerShell|Write|Edit|NotebookEdit",
+        "hooks": [ { "type": "command", "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pii-guard.mjs" } ] }
     ],
     "Stop": [
-      { "hooks": [ { "type": "command", "command": "pwsh -File ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/completion-check.ps1" } ] }
+      { "hooks": [ { "type": "command", "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/completion-check.mjs" } ] }
     ]
   }
 }
